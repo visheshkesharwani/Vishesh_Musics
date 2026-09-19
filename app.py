@@ -13,7 +13,7 @@ os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 # --- EMAIL SETTINGS ---
 SENDER_EMAIL = "vkmusics23@gmail.com"
-APP_PASSWORD = "dtcdxqdvwmpjbrfp" 
+APP_PASSWORD = "ciphqvundxlpzlzs" 
 ADMIN_EMAIL = "vkmusics23@gmail.com"
 
 def is_valid_email(email):
@@ -81,7 +81,7 @@ def process_download():
     uid = str(uuid.uuid4())[:8]
     outtmpl = os.path.join(DOWNLOAD_FOLDER, f'%(title)s_{uid}.%(ext)s')
 
-    # CLOUD FIX: Removed FFmpeg MP3 conversion. Directly grabbing best native audio (m4a)
+    # CLOUD FIX & ANTI-BOT BYPASS (THE MAGIC HAPPENS HERE)
     ydl_opts = {
         'format': 'm4a/bestaudio/best', 
         'outtmpl': outtmpl,
@@ -89,7 +89,9 @@ def process_download():
         'no_warnings': True,
         'noplaylist': True,
         'cachedir': False,
-        'nocheckcertificate': True
+        'nocheckcertificate': True,
+        'source_address': '0.0.0.0', # Forces IPv4 to avoid IPv6 blocking
+        'extractor_args': {'youtube': ['player_client=android']}, # Disguises the server as an Android phone
     }
 
     query = song_query if song_query.startswith("http") else f"ytsearch1:{song_query}"
@@ -99,7 +101,6 @@ def process_download():
             info = ydl.extract_info(query, download=True)
             
         actual_filename = None
-        # CLOUD FIX: Find file by UID regardless of extension (could be .m4a or .webm)
         for f in os.listdir(DOWNLOAD_FOLDER):
             if uid in f:
                 actual_filename = f
@@ -112,6 +113,8 @@ def process_download():
 
         return jsonify({'success': True, 'title': title, 'download_url': f'/get-audio/{actual_filename}'})
     except Exception as e:
+        # Pushing the exact error to Render Logs for debugging
+        print(f"YT-DLP ERROR CAUGHT: {str(e)}") 
         return jsonify({'error': str(e)}), 500
 
 @app.route('/get-audio/<filename>')
