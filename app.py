@@ -5,15 +5,11 @@ import re
 from email.mime.text import MIMEText
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import yt_dlp
-import imageio_ffmpeg
 
 app = Flask(__name__)
 
 DOWNLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'downloads')
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
-
-# RENDER CLOUD FFMPEG FIX 
-FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
 # --- EMAIL SETTINGS ---
 SENDER_EMAIL = "vkmusics23@gmail.com"
@@ -50,7 +46,6 @@ def submit_feedback_api():
         return jsonify({"success": False, "error": "Message required"}), 400
         
     try:
-        # 1. Message sent to YOU (Admin)
         admin_body = f"Feedback Received!\n\nEmail: {email if email else 'Anonymous'}\nMessage:\n{message}"
         admin_msg = MIMEText(admin_body, 'plain', 'utf-8')
         admin_msg['Subject'] = 'New Feedback - Vishesh Musics'
@@ -61,7 +56,6 @@ def submit_feedback_api():
             server.login(SENDER_EMAIL, APP_PASSWORD)
             server.send_message(admin_msg)
             
-            # 2. Thank You email sent to the USER (if they provided a valid email)
             if email and is_valid_email(email):
                 user_body = f"Hello,\n\nThank you for reaching out to Vishesh Musics!\n\nWe have received your feedback:\n\"{message}\"\n\nYour support helps us make the platform better. We will look into it!\n\nBest Regards,\nVishesh Kesharwani\nCreator, Vishesh Musics"
                 user_msg = MIMEText(user_body, 'plain', 'utf-8')
@@ -87,20 +81,15 @@ def process_download():
     uid = str(uuid.uuid4())[:8]
     outtmpl = os.path.join(DOWNLOAD_FOLDER, f'%(title)s_{uid}.%(ext)s')
 
+    # CLOUD FIX: Removed FFmpeg MP3 conversion. Directly grabbing best native audio (m4a)
     ydl_opts = {
-        'format': 'bestaudio/best', 
+        'format': 'm4a/bestaudio/best', 
         'outtmpl': outtmpl,
         'quiet': False, 
         'no_warnings': True,
         'noplaylist': True,
         'cachedir': False,
-        'nocheckcertificate': True,
-        'ffmpeg_location': FFMPEG_PATH,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }]
+        'nocheckcertificate': True
     }
 
     query = song_query if song_query.startswith("http") else f"ytsearch1:{song_query}"
@@ -110,13 +99,14 @@ def process_download():
             info = ydl.extract_info(query, download=True)
             
         actual_filename = None
+        # CLOUD FIX: Find file by UID regardless of extension (could be .m4a or .webm)
         for f in os.listdir(DOWNLOAD_FOLDER):
-            if uid in f and f.endswith('.mp3'):
+            if uid in f:
                 actual_filename = f
                 break
                 
         if not actual_filename:
-            raise Exception("MP3 conversion failed")
+            raise Exception("Audio extraction failed on cloud server.")
 
         title = info.get('title', song_query) if 'info' in locals() else song_query
 
