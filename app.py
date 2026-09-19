@@ -2,8 +2,11 @@ import os
 import uuid
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import yt_dlp
+from ytmusicapi import YTMusic
 
 app = Flask(__name__)
+# Initialize the official YouTube Music API for safe searching
+ytmusic = YTMusic()
 
 DOWNLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'downloads')
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
@@ -21,8 +24,8 @@ def submit_feedback_api():
     if not message:
         return jsonify({"success": False, "error": "Message required"}), 400
         
-    # Render blocks emails on free tier, so we save feedback to a text file locally on the server
     try:
+        # Saving locally to avoid Render's SMTP email block
         with open("feedback_logs.txt", "a") as f:
             f.write(f"Email: {email}\nMessage: {message}\n{'-'*30}\n")
         return jsonify({"success": True})
@@ -37,10 +40,26 @@ def process_download():
     if not song_query:
         return jsonify({'error': 'Song required'}), 400
 
+    query_url = song_query
+    title = song_query
+    
+    # MAGIC FIX: Search using ytmusicapi instead of yt-dlp to bypass HTML bot blocks
+    if not song_query.startswith("http"):
+        try:
+            search_results = ytmusic.search(song_query, filter="songs")
+            if not search_results:
+                return jsonify({'error': 'Song not found on YouTube Music.'}), 404
+            
+            video_id = search_results[0]['videoId']
+            title = search_results[0].get('title', song_query)
+            query_url = f"https://www.youtube.com/watch?v={video_id}"
+        except Exception as e:
+            return jsonify({'error': f"Safe Search failed: {str(e)}"}), 500
+
     uid = str(uuid.uuid4())[:8]
     outtmpl = os.path.join(DOWNLOAD_FOLDER, f'%(title)s_{uid}.%(ext)s')
 
-    # ULTIMATE ANTI-BOT BYPASS CONFIGURATION
+    # Now yt-dlp ONLY downloads the direct link using the strongest anti-bot client
     ydl_opts = {
         'format': 'm4a/bestaudio/best', 
         'outtmpl': outtmpl,
@@ -49,17 +68,12 @@ def process_download():
         'noplaylist': True,
         'cachedir': False,
         'nocheckcertificate': True,
-        'source_address': '0.0.0.0', # Forces IPv4
-        # Using iOS and TV clients to bypass the strict web/android blocks
-        'extractor_args': {'youtube': ['player_client=ios,tv']}, 
+        'extractor_args': {'youtube': ['player_client=android_creator']}, 
     }
-
-    # IMPORTANT: Using 'ytmsearch1:' instead of 'ytsearch1:' to pull from YouTube Music (lower bot protection)
-    query = song_query if song_query.startswith("http") else f"ytmsearch1:{song_query}"
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(query, download=True)
+            info = ydl.extract_info(query_url, download=True)
             
         actual_filename = None
         for f in os.listdir(DOWNLOAD_FOLDER):
@@ -70,9 +84,9 @@ def process_download():
         if not actual_filename:
             raise Exception("Audio extraction failed on cloud server.")
 
-        title = info.get('title', song_query) if 'info' in locals() else song_query
+        final_title = info.get('title', title) if 'info' in locals() else title
 
-        return jsonify({'success': True, 'title': title, 'download_url': f'/get-audio/{actual_filename}'})
+        return jsonify({'success': True, 'title': final_title, 'download_url': f'/get-audio/{actual_filename}'})
     except Exception as e:
         print(f"YT-DLP ERROR CAUGHT: {str(e)}") 
         return jsonify({'error': str(e)}), 500
