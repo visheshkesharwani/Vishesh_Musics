@@ -1,6 +1,4 @@
-Flask==3.0.0
-yt-dlp
-gunicorn==21.2.0
-imageio-ffmpeg==0.4.9
-setuptools==69.2.0
-ytmusicapi
+Flask>=3.0,<4
+yt-dlp>=2026.08.0
+imageio-ffmpeg>=0.6.0
+gunicorn>=23.0
