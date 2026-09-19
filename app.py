@@ -1,8 +1,5 @@
 import os
 import uuid
-import smtplib
-import re
-from email.mime.text import MIMEText
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import yt_dlp
 
@@ -11,27 +8,6 @@ app = Flask(__name__)
 DOWNLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'downloads')
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-# --- EMAIL SETTINGS ---
-SENDER_EMAIL = "vkmusics23@gmail.com"
-APP_PASSWORD = "ciphqvundxlpzlzs" 
-ADMIN_EMAIL = "vkmusics23@gmail.com"
-
-def is_valid_email(email):
-    pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-    return re.match(pattern, email) is not None
-
-def send_search_email(song_name):
-    try:
-        msg = MIMEText(f"Track Search Alert:\n\nName/Link: {song_name}", 'plain', 'utf-8')
-        msg['Subject'] = 'New Track Search - Vishesh Musics'
-        msg['From'] = SENDER_EMAIL
-        msg['To'] = ADMIN_EMAIL
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(SENDER_EMAIL, APP_PASSWORD)
-            server.send_message(msg)
-    except Exception as e:
-        print("Email error:", e)
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -39,31 +15,16 @@ def index():
 @app.route('/api/feedback', methods=['POST'])
 def submit_feedback_api():
     data = request.json or {}
-    email = data.get('email', '').strip()
+    email = data.get('email', 'Anonymous').strip()
     message = data.get('message', '').strip()
     
     if not message:
         return jsonify({"success": False, "error": "Message required"}), 400
         
+    # Render blocks emails on free tier, so we save feedback to a text file locally on the server
     try:
-        admin_body = f"Feedback Received!\n\nEmail: {email if email else 'Anonymous'}\nMessage:\n{message}"
-        admin_msg = MIMEText(admin_body, 'plain', 'utf-8')
-        admin_msg['Subject'] = 'New Feedback - Vishesh Musics'
-        admin_msg['From'] = SENDER_EMAIL
-        admin_msg['To'] = ADMIN_EMAIL
-
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(SENDER_EMAIL, APP_PASSWORD)
-            server.send_message(admin_msg)
-            
-            if email and is_valid_email(email):
-                user_body = f"Hello,\n\nThank you for reaching out to Vishesh Musics!\n\nWe have received your feedback:\n\"{message}\"\n\nYour support helps us make the platform better. We will look into it!\n\nBest Regards,\nVishesh Kesharwani\nCreator, Vishesh Musics"
-                user_msg = MIMEText(user_body, 'plain', 'utf-8')
-                user_msg['Subject'] = 'Thank You for Your Feedback! - Vishesh Musics'
-                user_msg['From'] = f"Vishesh Musics <{SENDER_EMAIL}>"
-                user_msg['To'] = email
-                server.send_message(user_msg)
-            
+        with open("feedback_logs.txt", "a") as f:
+            f.write(f"Email: {email}\nMessage: {message}\n{'-'*30}\n")
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -76,13 +37,10 @@ def process_download():
     if not song_query:
         return jsonify({'error': 'Song required'}), 400
 
-    send_search_email(song_query)
-
     uid = str(uuid.uuid4())[:8]
     outtmpl = os.path.join(DOWNLOAD_FOLDER, f'%(title)s_{uid}.%(ext)s')
 
-    # CLOUD FIX & ANTI-BOT BYPASS (THE MAGIC HAPPENS HERE)
-   # CLOUD FIX & ANTI-BOT BYPASS 
+    # ULTIMATE ANTI-BOT BYPASS CONFIGURATION
     ydl_opts = {
         'format': 'm4a/bestaudio/best', 
         'outtmpl': outtmpl,
@@ -91,12 +49,13 @@ def process_download():
         'noplaylist': True,
         'cachedir': False,
         'nocheckcertificate': True,
-        'cookiefile': 'cookies.txt', # <--- YE LINE YOUTUBE BOT PROTECTION KO BYPASS KAREGI
-        'source_address': '0.0.0.0', 
-        'extractor_args': {'youtube': ['player_client=android']}, 
+        'source_address': '0.0.0.0', # Forces IPv4
+        # Using iOS and TV clients to bypass the strict web/android blocks
+        'extractor_args': {'youtube': ['player_client=ios,tv']}, 
     }
 
-    query = song_query if song_query.startswith("http") else f"ytsearch1:{song_query}"
+    # IMPORTANT: Using 'ytmsearch1:' instead of 'ytsearch1:' to pull from YouTube Music (lower bot protection)
+    query = song_query if song_query.startswith("http") else f"ytmsearch1:{song_query}"
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -115,7 +74,6 @@ def process_download():
 
         return jsonify({'success': True, 'title': title, 'download_url': f'/get-audio/{actual_filename}'})
     except Exception as e:
-        # Pushing the exact error to Render Logs for debugging
         print(f"YT-DLP ERROR CAUGHT: {str(e)}") 
         return jsonify({'error': str(e)}), 500
 
