@@ -82,6 +82,7 @@ def process_download():
     outtmpl = os.path.join(DOWNLOAD_FOLDER, f'%(title)s_{uid}.%(ext)s')
 
     # CLOUD FIX & ANTI-BOT BYPASS (THE MAGIC HAPPENS HERE)
+   # CLOUD FIX & ANTI-BOT BYPASS 
     ydl_opts = {
         'format': 'm4a/bestaudio/best', 
         'outtmpl': outtmpl,
@@ -90,8 +91,9 @@ def process_download():
         'noplaylist': True,
         'cachedir': False,
         'nocheckcertificate': True,
-        'source_address': '0.0.0.0', # Forces IPv4 to avoid IPv6 blocking
-        'extractor_args': {'youtube': ['player_client=android']}, # Disguises the server as an Android phone
+        'cookiefile': 'cookies.txt', # <--- YE LINE YOUTUBE BOT PROTECTION KO BYPASS KAREGI
+        'source_address': '0.0.0.0', 
+        'extractor_args': {'youtube': ['player_client=android']}, 
     }
 
     query = song_query if song_query.startswith("http") else f"ytsearch1:{song_query}"
